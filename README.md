@@ -20,11 +20,12 @@
 ## 📚 データ出典・ライセンス
 本アプリは、以下のオープンデータを使用しています。
 
-- **運行データ**: バスきたくまさん（https://km.bus-vision.jp/kumamoto/view/opendataKuma.html）で公開されている主要バス4社のデータ
-  - 産交バス：https://www.kyusanko.co.jp/sankobus
-  - 熊本電鉄バス：https://www.kumamotodentetsu.co.jp/bus
-  - 熊本バス：https://www.kuma-bus.co.jp
-  - 熊本都市バス：https://www.kumamoto-toshibus.co.jp
+- **運行データ**
+　-バスきたくまさん（https://km.bus-vision.jp/kumamoto/view/opendataKuma.html） で公開されている、以下の主要バス4社のデータ
+  　- 産交バス：https://www.kyusanko.co.jp/sankobus
+    - 熊本電鉄バス：https://www.kumamotodentetsu.co.jp/bus
+    - 熊本バス：https://www.kuma-bus.co.jp
+    - 熊本都市バス：https://www.kumamoto-toshibus.co.jp
 - **ライセンス**: [クリエイティブ・コモンズ 表示 4.0 国際 (CC BY 4.0)](https://creativecommons.org/licenses/by/4.0/deed.ja)
 - **地図データ**: [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors
 - **ライブラリ**: [Leaflet](https://leafletjs.com/), [PapaParse](https://www.papaparse.com/)
