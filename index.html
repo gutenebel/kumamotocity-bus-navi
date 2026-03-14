@@ -189,14 +189,14 @@ function selectStop(stop) {
         const targetTime = document.getElementById('time-select').value;
         const latlng = L.latLng(db.coords[stop.stop_id]);
 
-        // 1. まず地図のコンテナサイズを変更
+        // 地図の高さを変更
         document.getElementById('map').style.height = '35vh';
         
-        // 2. 少しだけ遅延させてからLeafletにサイズ変更を通知し、移動させる
+        // CSSの transition: 0.3s が終わるのを待ってから再計算
         setTimeout(() => {
             map.invalidateSize();
-            map.flyTo(latlng, 17);
-        }, 100); // 0.1秒待機（CSSのtransitionとの干渉を防ぐ）
+            map.panTo(latlng); // 中心を合わせ直す
+        }, 350); 
 
         if(currentMarker) map.removeLayer(currentMarker);
         currentMarker = L.marker(latlng).addTo(map);
@@ -284,10 +284,17 @@ function selectStop(stop) {
     }
 
     function restoreTimetable() { if (lastSelectedStop) selectStop(lastSelectedStop); }
-    function closeSheet() {
+function closeSheet() {
         document.getElementById('bottom-sheet').classList.remove('open');
+        
+        // 地図を全画面に戻す
         document.getElementById('map').style.height = '100%';
-        map.invalidateSize();
+        
+        // アニメーションが終わる頃にサイズを再計算
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 350);
+
         routeLayers.clearLayers();
         stopMarkerLayers.addTo(map);
         document.getElementById('back-to-list').style.display = 'none';
