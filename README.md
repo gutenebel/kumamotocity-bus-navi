@@ -21,7 +21,8 @@
 本アプリは、以下のオープンデータを使用しています。
 
 - **運行データ**
-　-バスきたくまさん（https://km.bus-vision.jp/kumamoto/view/opendataKuma.html） で公開されている、以下の主要バス4社のデータ
+　-バスきたくまさん（https://km.bus-vision.jp/kumamoto/view/opendataKuma.html）
+   で公開されている、以下の主要バス4社のデータ
   　- 産交バス：https://www.kyusanko.co.jp/sankobus
     - 熊本電鉄バス：https://www.kumamotodentetsu.co.jp/bus
     - 熊本バス：https://www.kuma-bus.co.jp
