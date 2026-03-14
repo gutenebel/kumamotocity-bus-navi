@@ -46,8 +46,12 @@
         .stop-time-sm { width: 55px; font-size: 0.9em; }
         .stop-visual { width: 40px; display: flex; flex-direction: column; align-items: center; position: relative; align-self: stretch; }
         .stop-dot { width: 10px; height: 10px; border-radius: 50%; z-index: 2; background: white; border: 2px solid var(--accent); margin-top: 6px; }
-        .route-stop-item.passed .stop-dot, .route-stop-item.is-first .stop-dot { border-color: var(--passed); }
+        
+        /* ドットの色修正 */
+        .route-stop-item.passed .stop-dot { border-color: var(--passed); }
+        .route-stop-item.current .stop-dot { background: var(--accent); }
         .route-stop-item.is-last .stop-dot { background: var(--accent); }
+
         .stop-visual::after { content: ''; position: absolute; top: 15px; bottom: -8px; width: 3px; z-index: 1; }
         .route-stop-item.passed .stop-visual::after { background: var(--passed); }
         .route-stop-item:not(.passed) .stop-visual::after { background: var(--accent); }
@@ -110,7 +114,7 @@
         <strong>【地図データ】</strong><br>
         © <a href="https://www.openstreetmap.org/copyright" target="_blank" style="color: #003a7d;">OpenStreetMap</a> contributors<br><br>
         <strong>【免責事項】</strong><br>
-        本アプリは非公式の個人開発ツールです。正確な情報は各社公式HPを確認してください。<br><br>
+        本アプリは非公式の個人開発ツールです。正確な情報は各社公式HPを確認してください。本アプリに関するお問い合わせは開発者（gute.nebel）までお願いします。<br><br>
         © 2026 gute.nebel
     </div>
 </div>
@@ -182,21 +186,19 @@
         });
     }
 
-function selectStop(stop) {
+    function selectStop(stop) {
         lastSelectedStop = stop;
         stopMarkerLayers.addTo(map);
         const dayMode = document.getElementById('day-select').value;
         const targetTime = document.getElementById('time-select').value;
         const latlng = L.latLng(db.coords[stop.stop_id]);
 
-        // 地図の高さを変更
+        // 地図サイズ変更と再計算
         document.getElementById('map').style.height = '35vh';
-        
-        // CSSの transition: 0.3s が終わるのを待ってから再計算
         setTimeout(() => {
             map.invalidateSize();
-            map.panTo(latlng); // 中心を合わせ直す
-        }, 350); 
+            map.flyTo(latlng, 17);
+        }, 350);
 
         if(currentMarker) map.removeLayer(currentMarker);
         currentMarker = L.marker(latlng).addTo(map);
@@ -248,24 +250,31 @@ function selectStop(stop) {
             const isFirst = idx === 0;
             const isLast = idx === stops.length - 1;
 
-            // --- 描画ロジックの修正ポイント ---
+            // 線の描画ロジック：現在地も通過済み配列に含める
             if (isPassed) {
-                // 通過済みのバス停
                 ptsPassed.push(latlng);
             } else if (isCurrent) {
-                // 現在選択中のバス停（ここまでの線を「通過済み」に含める）
-                ptsPassed.push(latlng); 
-                ptsFuture.push(latlng); // 次の区間の起点にもなる
+                ptsPassed.push(latlng);
+                ptsFuture.push(latlng);
             } else {
-                // これからのバス停
                 ptsFuture.push(latlng);
             }
-            // ------------------------------
+
+            // 地図上ドットの色判定
+            let markerColor, markerFill;
+            if (isCurrent) {
+                markerColor = "#fff"; markerFill = "var(--accent)";
+            } else if (isPassed) {
+                markerColor = "#999"; markerFill = "#fff";
+            } else {
+                // 始発や未走行は赤
+                markerColor = "#fff"; markerFill = "var(--accent)";
+            }
 
             L.circleMarker(latlng, { 
                 radius: isCurrent ? 8 : 5, 
-                fillColor: (isPassed || isFirst) ? "#fff" : "var(--accent)", 
-                color: (isPassed || isFirst) ? "#999" : "#fff", 
+                fillColor: markerFill, 
+                color: markerColor, 
                 weight: 2, 
                 fillOpacity: 1 
             }).addTo(routeLayers);
@@ -273,7 +282,6 @@ function selectStop(stop) {
             listHtml += `<div class="route-stop-item ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''} ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''}"><div class="stop-time-sm">${s.departure_time}</div><div class="stop-visual"><div class="stop-dot"></div></div><div class="stop-name-sm">${db.stopNames[s.stop_id]}</div></div>`;
         });
 
-        // 線の描画
         if (ptsPassed.length > 1) L.polyline(ptsPassed, {color: '#999', weight: 4, opacity: 0.6}).addTo(routeLayers);
         if (ptsFuture.length > 1) L.polyline(ptsFuture, {color: 'var(--accent)', weight: 6, opacity: 0.9}).addTo(routeLayers);
 
@@ -284,21 +292,18 @@ function selectStop(stop) {
     }
 
     function restoreTimetable() { if (lastSelectedStop) selectStop(lastSelectedStop); }
-function closeSheet() {
+    
+    function closeSheet() {
         document.getElementById('bottom-sheet').classList.remove('open');
-        
-        // 地図を全画面に戻す
         document.getElementById('map').style.height = '100%';
-        
-        // アニメーションが終わる頃にサイズを再計算
         setTimeout(() => {
             map.invalidateSize();
         }, 350);
-
         routeLayers.clearLayers();
         stopMarkerLayers.addTo(map);
         document.getElementById('back-to-list').style.display = 'none';
     }
+
     function goCurrentLocation() { map.locate({setView: true, maxZoom: 16}); }
     function updateTimetable() { if (lastSelectedStop) { routeLayers.clearLayers(); selectStop(lastSelectedStop); } else { alert("バス停を選択してください"); } }
 
