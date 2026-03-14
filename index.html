@@ -102,13 +102,17 @@
     <div id="disclaimer-content" style="display: none; padding: 15px; background: #fff; text-align: left; line-height: 1.6; border-top: 1px solid #eee;">
         <strong>【データ提供】</strong><br>
         バスきたくまさん (https://km.bus-vision.jp/kumamoto/view/opendataKuma.html)<br><br>
+        <strong>【データダウンロード日】</strong><br>
+        2026年3月14日<br><br>
+        <strong>【データライセンス】</strong><br>
+        CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/deed.ja)<br><br>
         <strong>【バス事業者】</strong>（※バスきたくまさん掲載順）<br>
         産交バス (https://www.kyusanko.co.jp/sankobus)<br>
 	熊本電鉄バス (https://www.kumamotodentetsu.co.jp/bus)<br>
 	熊本バス (https://www.kuma-bus.co.jp)<br>
 	熊本都市バス (https://www.kumamoto-toshibus.co.jp)<br><br>
-        <strong>【データダウンロード日】</strong><br>
-        2026年3月14日<br><br>
+	<strong>【地図データ】</strong><br>
+    	© <a href="https://www.openstreetmap.org/copyright" target="_blank" style="color: #003a7d;">OpenStreetMap</a> contributors<br><br>
         <strong>【免責事項】</strong><br>
         本アプリは非公式の個人開発ツールです。正確な情報は各社公式HPを確認してください。<br><br>
         © 2026 gute.nebel
@@ -117,7 +121,10 @@
 
 <script>
     let map = L.map('map', { zoomControl: false }).setView([32.803, 130.708], 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);{
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
 
     let db = { stops: [], stop_times: {}, routes: {}, trips: {}, coords: {}, calendar: [], stopNames: {} };
     let routeLayers = L.layerGroup().addTo(map);
