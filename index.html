@@ -230,17 +230,48 @@
         map.removeLayer(stopMarkerLayers);
         const stops = db.stop_times[tripId].sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
         routeLayers.clearLayers();
+        
         let ptsPassed = [], ptsFuture = [], listHtml = `<div class="route-detail-list">`;
+        
         stops.forEach((s, idx) => {
             const latlng = db.coords[s.stop_id];
             if (!latlng) return;
-            const seq = parseInt(s.stop_sequence), isPassed = seq < currentStopSeq, isCurrent = seq === currentStopSeq, isFirst = idx === 0, isLast = idx === stops.length - 1;
-            if (isPassed) ptsPassed.push(latlng); else { if (ptsFuture.length === 0 && ptsPassed.length > 0) ptsFuture.push(ptsPassed[ptsPassed.length-1]); ptsFuture.push(latlng); }
-            L.circleMarker(latlng, { radius: isCurrent ? 8 : 5, fillColor: (isPassed || isFirst) ? "#fff" : "var(--accent)", color: (isPassed || isFirst) ? "#999" : "#fff", weight: 2, fillOpacity: 1 }).addTo(routeLayers);
+            
+            const seq = parseInt(s.stop_sequence);
+            const isPassed = seq < currentStopSeq;
+            const isCurrent = seq === currentStopSeq;
+            const isFirst = idx === 0;
+            const isLast = idx === stops.length - 1;
+
+            // --- 描画ロジックの修正ポイント ---
+            if (isPassed) {
+                // 通過済みのバス停
+                ptsPassed.push(latlng);
+            } else if (isCurrent) {
+                // 現在選択中のバス停（ここまでの線を「通過済み」に含める）
+                ptsPassed.push(latlng); 
+                ptsFuture.push(latlng); // 次の区間の起点にもなる
+            } else {
+                // これからのバス停
+                ptsFuture.push(latlng);
+            }
+            // ------------------------------
+
+            L.circleMarker(latlng, { 
+                radius: isCurrent ? 8 : 5, 
+                fillColor: (isPassed || isFirst) ? "#fff" : "var(--accent)", 
+                color: (isPassed || isFirst) ? "#999" : "#fff", 
+                weight: 2, 
+                fillOpacity: 1 
+            }).addTo(routeLayers);
+
             listHtml += `<div class="route-stop-item ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''} ${isFirst ? 'is-first' : ''} ${isLast ? 'is-last' : ''}"><div class="stop-time-sm">${s.departure_time}</div><div class="stop-visual"><div class="stop-dot"></div></div><div class="stop-name-sm">${db.stopNames[s.stop_id]}</div></div>`;
         });
+
+        // 線の描画
         if (ptsPassed.length > 1) L.polyline(ptsPassed, {color: '#999', weight: 4, opacity: 0.6}).addTo(routeLayers);
         if (ptsFuture.length > 1) L.polyline(ptsFuture, {color: 'var(--accent)', weight: 6, opacity: 0.9}).addTo(routeLayers);
+
         map.fitBounds(L.polyline(ptsPassed.concat(ptsFuture)).getBounds(), {padding: [50, 50]});
         document.getElementById('stop-name').innerText = "停車駅一覧";
         document.getElementById('timetable-list').innerHTML = listHtml + `</div>`;
