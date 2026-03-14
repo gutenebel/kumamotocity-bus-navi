@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>熊本市バスナビ</title>
+    <title>熊本バスナビ</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
@@ -29,7 +29,7 @@
         .content { flex: 1; overflow-y: auto; padding: 0 20px 30px; }
         .stop-name-header { font-size: 1.2em; font-weight: bold; margin-bottom: 10px; color: var(--primary); border-bottom: 2px solid #eee; padding-bottom: 5px; position: sticky; top: 0; background: white; z-index: 2; }
 
-        /* 時刻表アイテム */
+        /* 時刻表リスト */
         .bus-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
         .bus-time { width: 65px; font-size: 1.2em; font-weight: bold; }
         .bus-info { flex: 1; }
@@ -42,42 +42,25 @@
         .bus-dest { font-size: 0.95em; font-weight: bold; }
         .map-link { color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; border-radius: 18px; font-size: 0.8em; font-weight: bold; cursor: pointer; }
 
-        /* 停車駅リストのデザイン */
+        /* 停車駅リストのデザイン（完成版） */
         .route-stop-item { display: flex; align-items: center; padding: 8px 0; color: #333; position: relative; }
         .route-stop-item.passed { color: #aaa; }
         .route-stop-item.current { font-weight: bold; color: var(--primary); }
-        
         .stop-time-sm { width: 55px; font-size: 0.9em; }
-        
-        /* 縦線と丸のコンテナ */
         .stop-visual { width: 40px; display: flex; flex-direction: column; align-items: center; position: relative; align-self: stretch; }
-        
-        /* 丸の基本スタイル（白抜き） */
         .stop-dot { width: 10px; height: 10px; border-radius: 50%; z-index: 2; background: white; border: 2px solid var(--accent); margin-top: 6px; }
         
-        /* 通過済みおよび始点：グレーの白抜き丸に統一 */
+        /* 始点および通過駅：グレーの白抜き丸 */
         .route-stop-item.passed .stop-dot,
         .route-stop-item.is-first .stop-dot { border-color: var(--passed); }
         
         /* 終点：赤の塗りつぶし丸 */
         .route-stop-item.is-last .stop-dot { background: var(--accent); }
         
-        /* 縦線 */
-        .stop-visual::after {
-            content: '';
-            position: absolute;
-            top: 15px;
-            bottom: -8px;
-            width: 3px;
-            z-index: 1;
-        }
-        
-        /* 走行済み：灰色の実線 */
+        /* 縦の接続線 */
+        .stop-visual::after { content: ''; position: absolute; top: 15px; bottom: -8px; width: 3px; z-index: 1; }
         .route-stop-item.passed .stop-visual::after { background: var(--passed); }
-        
-        /* 未走行：赤の実線 */
         .route-stop-item:not(.passed) .stop-visual::after { background: var(--accent); }
-        
         .route-stop-item.is-last .stop-visual::after { display: none; }
 
         #back-to-list { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1005; background: var(--primary); color: white; padding: 12px 24px; border-radius: 30px; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; }
@@ -91,7 +74,7 @@
 <div id="loader" class="loading"><div>🚌 データを読込中...</div></div>
 
 <div class="top-nav">
-    <div id="search-box"><input type="text" id="stop-search" placeholder="バス停名を入力 (例: 呉服町)"></div>
+    <div id="search-box"><input type="text" id="stop-search" placeholder="バス停名を入力"></div>
     <div id="results"></div>
     <div class="schedule-picker">
         📅 <select id="day-select">
@@ -156,7 +139,7 @@
             }
             renderAllStops(); 
         } catch (e) {
-            alert("データの読み込みに失敗しました。");
+            alert("データの読み込みに失敗しました。dataフォルダ内に統合ファイルがあるか確認してください。");
         }
         document.getElementById('loader').style.display = 'none';
         
@@ -204,6 +187,7 @@
             const fullStops = db.stop_times[tid];
             const stIndex = fullStops.findIndex(x => sameNameIds.has(x.stop_id));
             
+            // 終点でないものだけ表示
             if (stIndex !== -1 && stIndex < fullStops.length - 1) {
                 const st = fullStops[stIndex];
                 if (st.departure_time >= targetTime) {
@@ -233,15 +217,14 @@
                     <div class="map-link" onclick="showRoute('${a.trip_id}', ${a.seq})">ルート</div>
                 </div>`;
         });
-        document.getElementById('timetable-list').innerHTML = html || "運行（または乗車可能な便）はありません";
+        document.getElementById('timetable-list').innerHTML = html || "乗車可能な便はありません";
         document.getElementById('bottom-sheet').classList.add('open');
         document.getElementById('back-to-list').style.display = 'none';
         routeLayers.clearLayers();
     }
 
     function showRoute(tripId, currentStopSeq) {
-        map.removeLayer(stopMarkerLayers);
-
+        map.removeLayer(stopMarkerLayers); // 無関係な駅を隠す
         const stops = db.stop_times[tripId].sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
         routeLayers.clearLayers();
         
@@ -264,9 +247,9 @@
                 ptsFuture.push(latlng);
             }
 
-            // 地図上のマーカー（リストと整合性をとる）
+            // 地図上のアイコン（白抜き・塗りつぶしの整合）
             L.circleMarker(latlng, { 
-                radius: isCurrent ? 8 : (isFirst || isLast) ? 6 : 4, 
+                radius: isCurrent ? 8 : 5, 
                 fillColor: (isPassed || isFirst) ? "#fff" : "var(--accent)", 
                 color: (isPassed || isFirst) ? "#999" : "#fff",
                 weight: 2, fillOpacity: 1 
@@ -284,16 +267,12 @@
         if (ptsFuture.length > 1) L.polyline(ptsFuture, {color: 'var(--accent)', weight: 6, opacity: 0.9}).addTo(routeLayers);
 
         map.fitBounds(L.polyline(ptsPassed.concat(ptsFuture)).getBounds(), {padding: [50, 50]});
-        
         document.getElementById('stop-name').innerText = "停車駅一覧";
         document.getElementById('timetable-list').innerHTML = listHtml + `</div>`;
         document.getElementById('back-to-list').style.display = 'block';
     }
 
-    function restoreTimetable() {
-        if (lastSelectedStop) selectStop(lastSelectedStop);
-    }
-
+    function restoreTimetable() { if (lastSelectedStop) selectStop(lastSelectedStop); }
     function closeSheet() {
         document.getElementById('bottom-sheet').classList.remove('open');
         document.getElementById('map').style.height = '100%';
@@ -302,7 +281,6 @@
         stopMarkerLayers.addTo(map);
         document.getElementById('back-to-list').style.display = 'none';
     }
-
     function goCurrentLocation() { map.locate({setView: true, maxZoom: 16}); }
 
     document.getElementById('stop-search').oninput = (e) => {
