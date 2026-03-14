@@ -1,88 +1,295 @@
-// --- 修正版：selectStop関数 ---
-function selectStop(stop) {
-    const dayMode = document.getElementById('day-select').value;
-    // ターゲット時刻を「HH:mm」形式に合わせる（秒を付けない）
-    const targetTime = document.getElementById('time-select').value; 
-    const latlng = L.latLng(db.coords[stop.stop_id]);
-
-    const mapContainer = document.getElementById('map');
-    mapContainer.style.height = '35vh';
-    map.invalidateSize();
-    map.flyTo(latlng, 17);
-
-    if(currentMarker) map.removeLayer(currentMarker);
-    currentMarker = L.marker(latlng).addTo(map);
-
-    // 有効なサービスIDを取得
-    const activeServices = new Set(db.calendar.filter(c => c[dayMode] === "1").map(c => c.service_id));
-    // 同じ名前のバス停IDをすべて取得（名寄せ）
-    const sameNameIds = new Set(db.stops.filter(s => s.stop_name === stop.stop_name).map(s => s.stop_id));
-    
-    let arrivals = [];
-    Object.keys(db.stop_times).forEach(tid => {
-        const trip = db.trips[tid];
-        if (!trip || (db.calendar.length > 0 && !activeServices.has(trip.service_id))) return;
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>熊本バスナビ - 4社統合版</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        :root { --primary: #003a7d; --accent: #e91e63; --passed: #999999; }
+        body { margin: 0; padding: 0; height: 100vh; font-family: -apple-system, sans-serif; overflow: hidden; background: #f8f9fa; }
+        #map { height: 100%; width: 100%; transition: height 0.3s ease; }
         
-        const st = db.stop_times[tid].find(x => sameNameIds.has(x.stop_id));
-        // 時刻比較：秒数を無視して比較
-        if (st && st.departure_time >= targetTime) {
-            const compKey = tid.split('_')[0];
-            arrivals.push({ 
-                time: st.departure_time, 
-                trip_id: tid, 
-                route: trip.route, 
-                headsign: trip.headsign, 
-                company: compKey 
-            });
+        /* UIパーツ */
+        .top-nav { position: fixed; top: 10px; left: 10px; right: 10px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+        #search-box { background: white; padding: 5px 15px; border-radius: 25px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; align-items: center; }
+        input[type="text"] { flex: 1; border: none; height: 40px; font-size: 16px; outline: none; background: transparent; }
+        .schedule-picker { background: white; padding: 10px 15px; border-radius: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; font-size: 14px; }
+        .schedule-picker select, .schedule-picker input { border: 1px solid #ddd; padding: 5px; border-radius: 5px; outline: none; }
+
+        .loc-btn { position: fixed; bottom: 100px; right: 20px; z-index: 1000; background: white; width: 50px; height: 50px; border-radius: 25px; display: flex; justify-content: center; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,0.2); border: none; font-size: 24px; }
+        
+        /* ボトムシート */
+        #bottom-sheet { position: fixed; bottom: 0; left: 0; right: 0; height: 60vh; background: white; z-index: 1001; border-top-left-radius: 20px; border-top-right-radius: 20px; box-shadow: 0 -4px 15px rgba(0,0,0,0.1); transition: transform 0.3s ease; transform: translateY(100%); display: flex; flex-direction: column; }
+        #bottom-sheet.open { transform: translateY(0); }
+        .handle-area { width: 100%; height: 30px; display: flex; justify-content: center; align-items: center; cursor: pointer; }
+        .handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; }
+        .content { flex: 1; overflow-y: auto; padding: 0 20px 30px; }
+        .stop-name-header { font-size: 1.2em; font-weight: bold; margin-bottom: 10px; color: var(--primary); border-bottom: 2px solid #eee; padding-bottom: 5px; position: sticky; top: 0; background: white; z-index: 2; }
+
+        /* 時刻表アイテム */
+        .bus-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .bus-time { width: 65px; font-size: 1.2em; font-weight: bold; }
+        .bus-info { flex: 1; }
+        .comp-tag { display: inline-block; font-size: 0.65em; padding: 1px 5px; border-radius: 3px; color: white; margin-right: 5px; vertical-align: middle; font-weight: bold; }
+        .tag-dentetsu { background: #e60012; }
+        .tag-kumabus { background: #009944; }
+        .tag-sankobus { background: #003a7d; }
+        .tag-toshibus { background: #f39800; }
+        .bus-route { display: inline-block; background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 0.75em; font-weight: bold; }
+        .bus-dest { font-size: 0.95em; font-weight: bold; }
+        .map-link { color: var(--accent); border: 1px solid var(--accent); padding: 6px 12px; border-radius: 18px; font-size: 0.8em; font-weight: bold; cursor: pointer; }
+
+        /* 停車駅リスト用スタイル */
+        .route-stop-item { display: flex; align-items: center; padding: 10px 0; color: #333; }
+        .route-stop-item.passed { color: #aaa; }
+        .route-stop-item.current { font-weight: bold; color: var(--primary); background: #f0f7ff; border-radius: 8px; }
+        .stop-time-sm { width: 55px; font-size: 0.9em; font-weight: bold; }
+        .stop-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); margin: 0 15px; position: relative; z-index: 1; }
+        .route-stop-item.passed .stop-dot { background: #ccc; }
+        .route-stop-item:not(:last-child) .stop-dot::after { 
+            content: ''; position: absolute; top: 12px; left: 5px; width: 2px; height: 25px; background: #eee; z-index: 0;
         }
-    });
 
-    // 重複カットとソート
-    const uniqueArrivals = [];
-    const seen = new Set();
-    arrivals.forEach(a => {
-        const key = `${a.time}-${a.route}-${a.headsign}`;
-        if (!seen.has(key)) { uniqueArrivals.push(a); seen.add(key); }
-    });
-    uniqueArrivals.sort((a,b) => a.time.localeCompare(b.time));
+        #back-to-list { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 1005; background: var(--primary); color: white; padding: 12px 24px; border-radius: 30px; border: none; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: none; }
+        #results { background: white; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); max-height: 250px; overflow-y: auto; }
+        .search-res-item { padding: 15px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .loading { position: fixed; inset: 0; background: rgba(255,255,255,0.95); z-index: 2000; display: flex; flex-direction: column; justify-content: center; align-items: center; font-weight: bold; }
+    </style>
+</head>
+<body>
 
-    const compNames = { 'dentetsu': '電鉄', 'kumabus': '熊バ', 'sankobus': '産交', 'toshibus': '都市' };
-    document.getElementById('stop-name').innerText = stop.stop_name;
-    
-    let html = "";
-    uniqueArrivals.slice(0, 40).forEach(a => {
-        html += `
-            <div class="bus-item">
-                <div class="bus-time">${a.time}</div>
-                <div class="bus-info">
-                    <span class="comp-tag tag-${a.company}">${compNames[a.company] || '不明'}</span>
-                    <div class="bus-route">${a.route}系統</div>
-                    <div class="bus-dest">${a.headsign} 行</div>
-                </div>
-                <div class="map-link" onclick="showRoute('${a.trip_id}')">ルート</div>
-            </div>`;
-    });
-    document.getElementById('timetable-list').innerHTML = html || '<p style="padding:20px;">運行はありません</p>';
-    document.getElementById('bottom-sheet').classList.add('open');
-}
+<div id="loader" class="loading"><div>🚌 4社統合データを読込中...</div></div>
 
-// --- 修正版：地図にバス停を一度だけ描画する（名寄せ表示） ---
-function renderAllStops() {
-    const renderedNames = new Set();
-    db.stops.forEach(s => {
-        // すでに同じ名前のバス停を描画済みならスキップ（地図上のピンをスッキリさせる）
-        if (renderedNames.has(s.stop_name)) return;
+<div class="top-nav">
+    <div id="search-box"><input type="text" id="stop-search" placeholder="バス停名を入力 (例: 呉服町)"></div>
+    <div id="results"></div>
+    <div class="schedule-picker">
+        📅 <select id="day-select">
+            <option value="monday">平日</option>
+            <option value="saturday">土曜日</option>
+            <option value="sunday">日曜日・祝日</option>
+        </select>
+        🕒 <input type="time" id="time-select">
+    </div>
+</div>
+
+<button class="loc-btn" onclick="goCurrentLocation()">📍</button>
+<button id="back-to-list" onclick="restoreTimetable()">時刻表リストに戻る</button>
+
+<div id="map"></div>
+
+<div id="bottom-sheet">
+    <div class="handle-area" onclick="closeSheet()"><div class="handle"></div></div>
+    <div class="content">
+        <div id="stop-name" class="stop-name-header"></div>
+        <div id="timetable-list"></div>
+    </div>
+</div>
+
+<script>
+    let map = L.map('map', { zoomControl: false }).setView([32.803, 130.708], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    let db = { stops: [], stop_times: {}, routes: {}, trips: {}, coords: {}, calendar: [], stopNames: {} };
+    let routeLayers = L.layerGroup().addTo(map);
+    let stopMarkerLayers = L.layerGroup().addTo(map);
+    let currentMarker;
+    let lastSelectedStop = null; // 時刻表復帰用
+
+    // 1. データ読込 (GitHub Pages対応)
+    async function initData() {
+        const files = ['stops.txt', 'routes.txt', 'trips.txt', 'stop_times.txt', 'calendar.txt'];
+        try {
+            for (let file of files) {
+                const response = await fetch(`./data/${file}`);
+                if (!response.ok) throw new Error(`Fetch failed: ${file}`);
+                const csvText = await response.text();
+                const data = Papa.parse(csvText, { header: true, skipEmptyLines: true }).data;
+                
+                if (file.includes('stops')) {
+                    db.stops = data;
+                    data.forEach(s => {
+                        db.coords[s.stop_id] = [parseFloat(s.stop_lat), parseFloat(s.stop_lon)];
+                        db.stopNames[s.stop_id] = s.stop_name;
+                    });
+                } else if (file.includes('routes')) {
+                    data.forEach(r => db.routes[r.route_id] = r.route_short_name || r.route_long_name);
+                } else if (file.includes('trips')) {
+                    data.forEach(t => db.trips[t.trip_id] = { route: db.routes[t.route_id], headsign: t.trip_headsign, service_id: t.service_id });
+                } else if (file.includes('stop_times')) {
+                    data.forEach(st => {
+                        if (!db.stop_times[st.trip_id]) db.stop_times[st.trip_id] = [];
+                        db.stop_times[st.trip_id].push(st);
+                    });
+                } else if (file.includes('calendar')) {
+                    db.calendar = data;
+                }
+            }
+            renderAllStops(); // 名寄せして描画
+        } catch (e) {
+            alert("エラー: " + e.message);
+        }
+        document.getElementById('loader').style.display = 'none';
         
-        const marker = L.circleMarker(db.coords[s.stop_id], {
-            radius: 8,
-            fillColor: "#003a7d",
-            color: "#fff",
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
-        }).addTo(map);
+        // 現在時刻セット
+        const now = new Date();
+        document.getElementById('time-select').value = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+        const dIdx = now.getDay();
+        document.getElementById('day-select').value = (dIdx === 0) ? "sunday" : (dIdx === 6) ? "saturday" : "monday";
+    }
+
+    // 3) 名寄せ描画：同じ名前のバス停は1つのピンに
+    function renderAllStops() {
+        stopMarkerLayers.clearLayers();
+        const renderedNames = new Set();
+        db.stops.forEach(s => {
+            if (renderedNames.has(s.stop_name)) return;
+            const marker = L.circleMarker(db.coords[s.stop_id], {
+                radius: 7, fillColor: "#003a7d", color: "#fff", weight: 2, fillOpacity: 0.8
+            }).addTo(stopMarkerLayers);
+            marker.on('click', () => selectStop(s));
+            renderedNames.add(s.stop_name);
+        });
+    }
+
+    function selectStop(stop) {
+        lastSelectedStop = stop;
+        const dayMode = document.getElementById('day-select').value;
+        const targetTime = document.getElementById('time-select').value; // HH:mm
+        const latlng = L.latLng(db.coords[stop.stop_id]);
+
+        document.getElementById('map').style.height = '35vh';
+        map.invalidateSize();
+        map.flyTo(latlng, 17);
+
+        if(currentMarker) map.removeLayer(currentMarker);
+        currentMarker = L.marker(latlng).addTo(map);
+
+        const activeServices = new Set(db.calendar.filter(c => c[dayMode] === "1").map(c => c.service_id));
+        const sameNameIds = new Set(db.stops.filter(s => s.stop_name === stop.stop_name).map(s => s.stop_id));
         
-        marker.on('click', () => selectStop(s));
-        renderedNames.add(s.stop_name);
-    });
-}
+        let arrivals = [];
+        Object.keys(db.stop_times).forEach(tid => {
+            const trip = db.trips[tid];
+            if (!trip || (db.calendar.length > 0 && !activeServices.has(trip.service_id))) return;
+            const st = db.stop_times[tid].find(x => sameNameIds.has(x.stop_id));
+            if (st && st.departure_time >= targetTime) {
+                arrivals.push({ 
+                    time: st.departure_time, trip_id: tid, route: trip.route, 
+                    headsign: trip.headsign, seq: parseInt(st.stop_sequence), 
+                    company: tid.split('_')[0] 
+                });
+            }
+        });
+
+        arrivals.sort((a,b) => a.time.localeCompare(b.time));
+        const compNames = { 'dentetsu': '電鉄', 'kumabus': '熊バ', 'sankobus': '産交', 'toshibus': '都市' };
+        
+        document.getElementById('stop-name').innerText = stop.stop_name;
+        let html = "";
+        arrivals.slice(0, 40).forEach(a => {
+            html += `
+                <div class="bus-item">
+                    <div class="bus-time">${a.time}</div>
+                    <div class="bus-info">
+                        <span class="comp-tag tag-${a.company}">${compNames[a.company] || '不明'}</span>
+                        <div class="bus-route">${a.route}系統</div>
+                        <div class="bus-dest">${a.headsign} 行</div>
+                    </div>
+                    <div class="map-link" onclick="showRoute('${a.trip_id}', ${a.seq})">ルート</div>
+                </div>`;
+        });
+        document.getElementById('timetable-list').innerHTML = html || "運行はありません";
+        document.getElementById('bottom-sheet').classList.add('open');
+        document.getElementById('back-to-list').style.display = 'none';
+        routeLayers.clearLayers();
+    }
+
+    // 1) & 2) ルート表示と全停車駅リスト
+    function showRoute(tripId, currentStopSeq) {
+        const stops = db.stop_times[tripId].sort((a,b) => parseInt(a.stop_sequence) - parseInt(b.stop_sequence));
+        routeLayers.clearLayers();
+        
+        let ptsPassed = [];
+        let ptsFuture = [];
+        let listHtml = `<div class="route-detail-list">`;
+        
+        stops.forEach((s, idx) => {
+            const latlng = db.coords[s.stop_id];
+            if (!latlng) return;
+            const seq = parseInt(s.stop_sequence);
+            const isPassed = seq < currentStopSeq;
+            const isCurrent = seq === currentStopSeq;
+
+            if (isPassed) ptsPassed.push(latlng);
+            else {
+                if (ptsFuture.length === 0 && ptsPassed.length > 0) ptsFuture.push(ptsPassed[ptsPassed.length-1]);
+                ptsFuture.push(latlng);
+            }
+
+            // 始点・終点マーカー
+            if (idx === 0) L.circleMarker(latlng, { radius: 6, fillColor: "#999", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(routeLayers);
+            else if (idx === stops.length - 1) L.circleMarker(latlng, { radius: 6, fillColor: "var(--accent)", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(routeLayers);
+
+            listHtml += `
+                <div class="route-stop-item ${isPassed ? 'passed' : ''} ${isCurrent ? 'current' : ''}">
+                    <div class="stop-time-sm">${s.departure_time}</div>
+                    <div class="stop-dot"></div>
+                    <div class="stop-name-sm">${db.stopNames[s.stop_id]}</div>
+                </div>`;
+        });
+
+        if (ptsPassed.length > 1) L.polyline(ptsPassed, {color: '#999', weight: 4, opacity: 0.6}).addTo(routeLayers);
+        if (ptsFuture.length > 1) L.polyline(ptsFuture, {color: 'var(--accent)', weight: 6, opacity: 0.9}).addTo(routeLayers);
+
+        map.fitBounds(L.polyline(ptsPassed.concat(ptsFuture)).getBounds(), {padding: [50, 50]});
+        
+        document.getElementById('stop-name').innerText = "停車駅一覧";
+        document.getElementById('timetable-list').innerHTML = listHtml + `</div>`;
+        document.getElementById('back-to-list').style.display = 'block';
+    }
+
+    function restoreTimetable() {
+        if (lastSelectedStop) selectStop(lastSelectedStop);
+    }
+
+    function closeSheet() {
+        document.getElementById('bottom-sheet').classList.remove('open');
+        document.getElementById('map').style.height = '100%';
+        map.invalidateSize();
+        routeLayers.clearLayers();
+        document.getElementById('back-to-list').style.display = 'none';
+    }
+
+    function goCurrentLocation() { map.locate({setView: true, maxZoom: 16}); }
+
+    // 検索機能
+    document.getElementById('stop-search').oninput = (e) => {
+        const val = e.target.value;
+        const res = document.getElementById('results');
+        res.innerHTML = '';
+        if(val.length < 1) return;
+        const hits = [];
+        const seenNames = new Set();
+        db.stops.forEach(s => {
+            if(s.stop_name.includes(val) && !seenNames.has(s.stop_name)) {
+                hits.push(s);
+                seenNames.add(s.stop_name);
+            }
+        });
+        hits.slice(0, 10).forEach(m => {
+            const d = document.createElement('div');
+            d.className = 'search-res-item';
+            d.textContent = m.stop_name;
+            d.onclick = () => { selectStop(m); res.innerHTML = ''; e.target.value = m.stop_name; };
+            res.appendChild(d);
+        });
+    };
+
+    window.onload = initData;
+</script>
+</body>
+</html>
